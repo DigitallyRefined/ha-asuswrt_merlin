@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "AsusWrt-Merlin Setup",
+        "description": "Configure your AsusWrt-Merlin router connection",
+        "data": {
+          "host": "Router IP address",
+          "username": "Username",
+          "password": "Password",
+          "ssh_key": "SSH private key file path (optional, leave empty for password auth)",
+          "port": "SSH port",
+          "consider_home": "Consider home (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the router",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Router is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "AsusWrt-Merlin Options",
+        "data": {
+          "consider_home": "Consider home (seconds)"
+        }
+      }
+    }
+  }
+}
