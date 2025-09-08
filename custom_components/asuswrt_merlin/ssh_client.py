@@ -8,7 +8,16 @@ from typing import Any
 
 import paramiko
 
-from .const import ATTR_HOSTNAME, ATTR_IP, ATTR_LAST_ACTIVITY, ATTR_MAC, CMD_ARP, CMD_DEVICES
+from .const import (
+    ATTR_HOSTNAME,
+    ATTR_IP,
+    ATTR_LAST_ACTIVITY,
+    ATTR_MAC,
+    CMD_ARP,
+    CMD_DEVICES,
+    CMD_WAN_IFNAME,
+    CMD_PROC_NET_DEV,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,6 +48,7 @@ class AsusWrtSSHClient:
         self.password = password
         self.ssh_key = ssh_key  # This should be a file path
         self.client: paramiko.SSHClient | None = None
+        self._wan_iface_cache: str | None = None
 
     def connect(self) -> None:
         """Connect to the router via SSH."""
@@ -120,6 +130,50 @@ class AsusWrtSSHClient:
             return output
         except Exception as ex:
             raise RuntimeError(f"Failed to execute command: {command}") from ex
+
+    def get_wan_interface(self) -> str:
+        """Get WAN interface name from nvram, with simple cache."""
+        if self._wan_iface_cache:
+            return self._wan_iface_cache
+
+        output = self._execute_command(CMD_WAN_IFNAME).strip()
+        iface = output.splitlines()[0].strip() if output else ""
+        if not iface:
+            # Fallback to common defaults
+            iface = "eth4"
+        self._wan_iface_cache = iface
+        return iface
+
+    def get_wan_counters(self) -> dict[str, int] | None:
+        """Return WAN RX/TX byte counters from /proc/net/dev for the WAN iface.
+
+        Returns a dict: {"rx_bytes": int, "tx_bytes": int} or None on failure.
+        """
+        iface = self.get_wan_interface()
+        output = self._execute_command(CMD_PROC_NET_DEV)
+        if not output:
+            return None
+
+        # /proc/net/dev format lines like: "  eth0: bytes    packets ... | bytes packets ..."
+        lines = output.strip().split("\n")
+        for line in lines:
+            if ":" not in line:
+                continue
+            left, right = line.split(":", 1)
+            name = left.strip()
+            if name != iface:
+                continue
+            # After colon: receive fields then transmit fields
+            parts = right.split()
+            if len(parts) < 16:
+                continue
+            try:
+                rx_bytes = int(parts[0])
+                tx_bytes = int(parts[8])
+                return {"rx_bytes": rx_bytes, "tx_bytes": tx_bytes}
+            except ValueError:
+                continue
+        return None
 
     def get_connected_devices(self) -> list[dict[str, Any]]:
         """Get list of connected devices from the router."""

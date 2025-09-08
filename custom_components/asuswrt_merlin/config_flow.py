@@ -83,9 +83,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     try:
         await hass.async_add_executor_job(ssh_client.connect)
         devices = await hass.async_add_executor_job(ssh_client.get_connected_devices)
-        ssh_client.disconnect()
     except Exception as ex:
         raise CannotConnect from ex
+    finally:
+        ssh_client.disconnect()
 
     return {"title": f"AsusWrt-Merlin {data[CONF_HOST]}"}
 

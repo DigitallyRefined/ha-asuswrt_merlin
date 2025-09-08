@@ -19,6 +19,8 @@ DEFAULT_MODE = "ssh"
 # SSH commands
 CMD_ARP = "cat /proc/net/arp"
 CMD_DEVICES = "cat /var/lib/misc/dnsmasq.leases"
+CMD_WAN_IFNAME = "nvram get wan_ifname"
+CMD_PROC_NET_DEV = "cat /proc/net/dev"
 
 # Device tracker attributes
 ATTR_HOSTNAME = "hostname"

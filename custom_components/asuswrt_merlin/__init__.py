@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import DOMAIN
-from .device_tracker import AsusWrtMerlinDataUpdateCoordinator
+from .coordinator import AsusWrtMerlinDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +24,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = AsusWrtMerlinDataUpdateCoordinator(hass, entry)
     
     try:
+        # Load persisted device last-seen timestamps before first refresh
+        await coordinator.async_load_persisted_last_seen()
         await coordinator.async_config_entry_first_refresh()
     except Exception as ex:
         _LOGGER.error("Failed to initialize coordinator: %s", ex)
