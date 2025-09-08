@@ -1,23 +1,21 @@
 """Device tracker platform for AsusWrt-Merlin integration."""
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.device_tracker import ScannerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
     ATTR_HOSTNAME,
     ATTR_IP,
     ATTR_LAST_ACTIVITY,
     ATTR_MAC,
-    CONF_CONSIDER_HOME,
     DOMAIN,
 )
 from .coordinator import AsusWrtMerlinDataUpdateCoordinator
@@ -52,7 +50,7 @@ async def async_setup_entry(
         new_entities = []
         for device in new_devices:
             new_entities.append(AsusWrtMerlinDeviceTracker(coordinator, device))
-        
+
         if new_entities:
             _LOGGER.info("Adding %d new device entities", len(new_entities))
             async_add_entities(new_entities, True)
@@ -62,6 +60,7 @@ async def async_setup_entry(
 
 class AsusWrtMerlinDataUpdateCoordinator(AsusWrtMerlinDataUpdateCoordinator):
     """Backwards-compatible alias imported by device_tracker and sensor modules."""
+
     pass
 
 
@@ -110,7 +109,7 @@ class AsusWrtMerlinDeviceTracker(ScannerEntity):
                     time_diff = datetime.now() - last_activity
                     if time_diff.total_seconds() < self.coordinator.consider_home:
                         return True
-                
+
                 # If last_activity is None, device is not connected
                 return False
 
@@ -180,8 +179,11 @@ class AsusWrtMerlinDeviceTracker(ScannerEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        _LOGGER.debug("Device tracker entity %s added to hass with enabled_default=%s", 
-                     self.name, self.entity_registry_enabled_default)
+        _LOGGER.debug(
+            "Device tracker entity %s added to hass with enabled_default=%s",
+            self.name,
+            self.entity_registry_enabled_default,
+        )
         self.async_on_remove(
             self.coordinator.async_add_listener(self.async_write_ha_state)
         )

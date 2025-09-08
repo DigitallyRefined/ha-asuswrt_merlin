@@ -1,9 +1,9 @@
 """SSH client for AsusWrt-Merlin integration."""
+
 from __future__ import annotations
 
 import logging
-import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import paramiko
@@ -78,7 +78,9 @@ class AsusWrtSSHClient:
         except Exception as ex:
             self.client.close()
             self.client = None
-            raise ConnectionError(f"Failed to connect to {self.host}:{self.port}") from ex
+            raise ConnectionError(
+                f"Failed to connect to {self.host}:{self.port}"
+            ) from ex
 
     def disconnect(self) -> None:
         """Disconnect from the router."""
@@ -112,7 +114,9 @@ class AsusWrtSSHClient:
             raise paramiko.SSHException(f"Unable to load SSH key from {key_path}")
 
         except Exception as ex:
-            raise ConnectionError(f"Failed to load SSH key from {key_path}: {ex}") from ex
+            raise ConnectionError(
+                f"Failed to load SSH key from {key_path}: {ex}"
+            ) from ex
 
     def _execute_command(self, command: str) -> str:
         """Execute a command on the router."""
@@ -191,12 +195,12 @@ class AsusWrtSSHClient:
             # Merge DHCP and ARP data
             for dhcp_device in dhcp_devices:
                 mac = dhcp_device[ATTR_MAC].upper()
-                
+
                 # Check if device is in ARP table (active)
                 is_connected = any(
                     arp_device[ATTR_MAC].upper() == mac for arp_device in arp_devices
                 )
-                
+
                 device = {
                     ATTR_MAC: mac,
                     ATTR_HOSTNAME: dhcp_device[ATTR_HOSTNAME],
@@ -215,7 +219,9 @@ class AsusWrtSSHClient:
                 devices.append(device)
 
             _LOGGER.debug("Found %d devices", len(devices))
-            connected_count = sum(1 for device in devices if device.get("is_connected", False))
+            connected_count = sum(
+                1 for device in devices if device.get("is_connected", False)
+            )
             _LOGGER.debug("Found %d connected devices (in ARP table)", connected_count)
             return devices
 
@@ -239,12 +245,14 @@ class AsusWrtSSHClient:
                 # Use MAC address with underscores if hostname is empty, "*", or just whitespace
                 if not hostname or hostname == "*" or not hostname.strip():
                     hostname = f"device_{parts[1].replace(':', '_')}"
-                
-                devices.append({
-                    ATTR_MAC: parts[1],
-                    ATTR_IP: parts[2],
-                    ATTR_HOSTNAME: hostname,
-                })
+
+                devices.append(
+                    {
+                        ATTR_MAC: parts[1],
+                        ATTR_IP: parts[2],
+                        ATTR_HOSTNAME: hostname,
+                    }
+                )
 
         return devices
 
@@ -260,10 +268,12 @@ class AsusWrtSSHClient:
             # Format: IP address HW type Flags HW address Mask Device
             parts = line.split()
             if len(parts) >= 6 and parts[2] == "0x2":  # 0x2 means reachable
-                devices.append({
-                    ATTR_IP: parts[0],
-                    ATTR_MAC: parts[3],
-                    ATTR_HOSTNAME: f"device_{parts[3].replace(':', '_')}",
-                })
+                devices.append(
+                    {
+                        ATTR_IP: parts[0],
+                        ATTR_MAC: parts[3],
+                        ATTR_HOSTNAME: f"device_{parts[3].replace(':', '_')}",
+                    }
+                )
 
         return devices

@@ -1,4 +1,5 @@
 """Shared data coordinator for AsusWrt-Merlin integration."""
+
 from __future__ import annotations
 
 import logging
@@ -114,7 +115,9 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
                         if last_activity is not None:
                             if isinstance(last_activity, str):
                                 try:
-                                    last_activity = datetime.fromisoformat(last_activity)
+                                    last_activity = datetime.fromisoformat(
+                                        last_activity
+                                    )
                                 except Exception:
                                     # Skip unparsable timestamps
                                     continue
@@ -137,7 +140,9 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Error in _async_update_data: %s", ex, exc_info=True)
             raise UpdateFailed(f"Error communicating with router: {ex}") from ex
 
-    def _get_data_from_router(self) -> tuple[list[dict[str, Any]], dict[str, int] | None]:
+    def _get_data_from_router(
+        self,
+    ) -> tuple[list[dict[str, Any]], dict[str, int] | None]:
         """Fetch all data using a single SSH connection."""
         try:
             self.ssh_client.connect()
@@ -176,7 +181,11 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_save_persisted_last_seen(self) -> None:
         """Persist last-seen timestamps to storage."""
         try:
-            serializable = {mac: ts.isoformat() for mac, ts in self.mac_last_seen.items() if isinstance(ts, datetime)}
+            serializable = {
+                mac: ts.isoformat()
+                for mac, ts in self.mac_last_seen.items()
+                if isinstance(ts, datetime)
+            }
             await self._store.async_save(serializable)
         except Exception as ex:
             _LOGGER.debug("Failed to save persisted last_seen: %s", ex)
@@ -223,8 +232,8 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
             return
 
         # Totals in GB (base-2 as GB per earlier choice)
-        self.wan_total_download_gb = rx_bytes / (1024 ** 3)
-        self.wan_total_upload_gb = tx_bytes / (1024 ** 3)
+        self.wan_total_download_gb = rx_bytes / (1024**3)
+        self.wan_total_upload_gb = tx_bytes / (1024**3)
 
         # Speeds
         rx_delta: int | None = None
@@ -252,5 +261,3 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
         # Expose deltas for sensors to accumulate
         self.wan_last_rx_delta_bytes = rx_delta if rx_delta is not None else 0
         self.wan_last_tx_delta_bytes = tx_delta if tx_delta is not None else 0
-
-

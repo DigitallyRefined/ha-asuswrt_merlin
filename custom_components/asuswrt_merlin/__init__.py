@@ -1,4 +1,5 @@
 """The AsusWrt-Merlin integration."""
+
 from __future__ import annotations
 
 import logging
@@ -19,10 +20,10 @@ PLATFORMS: list[Platform] = [Platform.DEVICE_TRACKER, Platform.SENSOR]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up AsusWrt-Merlin from a config entry."""
     hass.data.setdefault(DOMAIN, {})
-    
+
     # Initialize coordinator
     coordinator = AsusWrtMerlinDataUpdateCoordinator(hass, entry)
-    
+
     try:
         # Load persisted device last-seen timestamps before first refresh
         await coordinator.async_load_persisted_last_seen()
@@ -30,7 +31,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as ex:
         _LOGGER.error("Failed to initialize coordinator: %s", ex)
         raise ConfigEntryNotReady from ex
-    
+
     # Store coordinator in hass data
     hass.data[DOMAIN][entry.entry_id] = coordinator
 

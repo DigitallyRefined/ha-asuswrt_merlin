@@ -1,4 +1,5 @@
 """Config flow for AsusWrt-Merlin integration."""
+
 from __future__ import annotations
 
 import logging
@@ -15,16 +16,15 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     CONF_CONSIDER_HOME,
-    CONF_MODE,
     CONF_SSH_KEY,
     DEFAULT_CONSIDER_HOME,
-    DEFAULT_MODE,
     DEFAULT_PORT,
     DOMAIN,
 )
 from .ssh_client import AsusWrtSSHClient
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def validate_ssh_key_file(hass: HomeAssistant, value: str) -> str:
     """Validate SSH key file path."""
@@ -40,7 +40,7 @@ async def validate_ssh_key_file(hass: HomeAssistant, value: str) -> str:
     # Check if file is readable using async executor
     def _check_file_readable():
         try:
-            with open(value, 'r') as f:
+            with open(value, "r") as f:
                 f.read(1)  # Try to read at least one character
         except (OSError, IOError) as ex:
             raise vol.Invalid(f"Cannot read SSH key file: {ex}") from ex
@@ -71,7 +71,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     ssh_key = data.get(CONF_SSH_KEY)
     if ssh_key:
         await validate_ssh_key_file(hass, ssh_key)
-    
+
     ssh_client = AsusWrtSSHClient(
         host=data[CONF_HOST],
         port=data[CONF_PORT],
@@ -82,7 +82,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     try:
         await hass.async_add_executor_job(ssh_client.connect)
-        devices = await hass.async_add_executor_job(ssh_client.get_connected_devices)
     except Exception as ex:
         raise CannotConnect from ex
     finally:

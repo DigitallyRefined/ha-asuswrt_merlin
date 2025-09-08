@@ -1,11 +1,16 @@
 """Sensor platform for AsusWrt-Merlin integration."""
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass, SensorDeviceClass
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorStateClass,
+    SensorDeviceClass,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -37,10 +42,6 @@ def _ensure_wan_stats_updated(coordinator: AsusWrtMerlinDataUpdateCoordinator) -
         if _WAN_CACHE["coordinator_ts"] == coordinator.last_update_time:
             return
 
-        # WAN stats are fetched by the coordinator in the same SSH session.
-        # Recompute cache from coordinator's computed values.
-        counters = None
-
         _WAN_CACHE.update(
             {
                 "coordinator_ts": coordinator.last_update_time,
@@ -63,7 +64,7 @@ async def async_setup_entry(
     """Set up sensor platform for AsusWrt-Merlin component."""
     # Get coordinator from hass data (created in __init__.py)
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    
+
     entities = [
         AsusWrtMerlinRouterSensor(coordinator, entry),
         AsusWrtMerlinWanTotalDownloadSensor(coordinator, entry),
@@ -77,7 +78,7 @@ async def async_setup_entry(
         AsusWrtMerlinWanYearlyDownloadSensor(coordinator, entry),
         AsusWrtMerlinWanYearlyUploadSensor(coordinator, entry),
     ]
-    
+
     async_add_entities(entities, True)
 
 
@@ -116,7 +117,7 @@ class AsusWrtMerlinRouterSensor(AsusWrtMerlinSensorBase):
         """Return the number of connected devices as the main value."""
         if not self.coordinator.data:
             return 0
-        
+
         # Count devices that are currently connected
         connected_count = 0
         for device in self.coordinator.data:
@@ -131,7 +132,7 @@ class AsusWrtMerlinRouterSensor(AsusWrtMerlinSensorBase):
                     time_diff = datetime.now() - last_activity
                     if time_diff.total_seconds() < self.coordinator.consider_home:
                         connected_count += 1
-        
+
         return connected_count
 
     @property
@@ -139,37 +140,42 @@ class AsusWrtMerlinRouterSensor(AsusWrtMerlinSensorBase):
         """Return comprehensive state attributes."""
         attrs = {
             # Router connection info
-            "router_status": "Connected" if self.coordinator.last_update_success else "Disconnected",
+            "router_status": "Connected"
+            if self.coordinator.last_update_success
+            else "Disconnected",
             "host": self._entry.data["host"],
             "update_interval_seconds": self.coordinator.update_interval.total_seconds(),
         }
-        
+
         # Last update information
         if self.coordinator.last_update_time:
-            attrs["last_update"] = self.coordinator.last_update_time.strftime("%Y-%m-%d %H:%M:%S")
+            attrs["last_update"] = self.coordinator.last_update_time.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
         else:
             attrs["last_update"] = None
-        
+
         # Device statistics
         if not self.coordinator.data:
-            attrs.update({
-                "total_devices": 0,
-                "active_devices": 0,
-                "recently_seen_devices": 0,
-                "offline_devices": 0,
-                "devices": [],
-            })
+            attrs.update(
+                {
+                    "total_devices": 0,
+                    "active_devices": 0,
+                    "recently_seen_devices": 0,
+                    "offline_devices": 0,
+                    "devices": [],
+                }
+            )
             return attrs
-        
+
         # Count devices by status
         active_count = 0  # Currently in ARP table (actively communicating)
         recently_seen_count = 0  # Not in ARP but seen within consider_home time
         offline_count = 0
-        devices = []
-        
+
         for device in self.coordinator.data:
             is_connected = device.get("is_connected", False)
-            
+
             if is_connected:
                 # Device is actively communicating (in ARP table)
                 active_count += 1
@@ -187,14 +193,16 @@ class AsusWrtMerlinRouterSensor(AsusWrtMerlinSensorBase):
                         offline_count += 1
                 else:
                     offline_count += 1
-        
-        attrs.update({
-            "total_devices": len(self.coordinator.data),
-            "active_devices": active_count,
-            "recently_seen_devices": recently_seen_count,
-            "offline_devices": offline_count,
-        })
-        
+
+        attrs.update(
+            {
+                "total_devices": len(self.coordinator.data),
+                "active_devices": active_count,
+                "recently_seen_devices": recently_seen_count,
+                "offline_devices": offline_count,
+            }
+        )
+
         return attrs
 
 
@@ -359,7 +367,7 @@ class _AccumulatingWanCounterSensor(AsusWrtMerlinSensorBase, RestoreEntity):
             else:
                 delta_bytes = self.coordinator.wan_last_tx_delta_bytes or 0
 
-            self._value_gb = (self._value_gb or 0.0) + (delta_bytes / (1024 ** 3))
+            self._value_gb = (self._value_gb or 0.0) + (delta_bytes / (1024**3))
         finally:
             self.async_write_ha_state()
 
