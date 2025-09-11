@@ -73,7 +73,19 @@ class AsusWrtMerlinDeviceTracker(ScannerEntity):
         """Initialize the device tracker."""
         self.coordinator = coordinator
         self._device = device
-        self._attr_name = device[ATTR_HOSTNAME]
+        # Include hostname and MAC in the initial name (for entity_id generation),
+        # but avoid duplicating the MAC if it's already present in the hostname.
+        hostname = (device.get(ATTR_HOSTNAME) or "").strip()
+        mac = device[ATTR_MAC]
+        if hostname:
+            host_norm = hostname.lower().replace(":", "").replace("-", "")
+            mac_norm = mac.lower().replace(":", "").replace("-", "")
+            if mac_norm in host_norm:
+                self._attr_name = hostname
+            else:
+                self._attr_name = f"{hostname} ({mac})"
+        else:
+            self._attr_name = mac
         self._attr_unique_id = device[ATTR_MAC]
         # New devices are created as disabled by default
         self._attr_entity_registry_enabled_default = False

@@ -244,7 +244,7 @@ class AsusWrtSSHClient:
                 hostname = parts[3]
                 # Use MAC address with underscores if hostname is empty, "*", or just whitespace
                 if not hostname or hostname == "*" or not hostname.strip():
-                    hostname = f"device_{parts[1].replace(':', '_')}"
+                    hostname = f"device_{parts[1].replace(':', '-')}"
 
                 devices.append(
                     {
@@ -272,7 +272,7 @@ class AsusWrtSSHClient:
                     {
                         ATTR_IP: parts[0],
                         ATTR_MAC: parts[3],
-                        ATTR_HOSTNAME: f"device_{parts[3].replace(':', '_')}",
+                        ATTR_HOSTNAME: f"device_{parts[3].replace(':', '-')}",
                     }
                 )
 
