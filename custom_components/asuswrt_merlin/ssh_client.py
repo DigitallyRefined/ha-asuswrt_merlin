@@ -11,7 +11,7 @@ import paramiko
 from .const import (
     ATTR_HOSTNAME,
     ATTR_IP,
-    ATTR_LAST_ACTIVITY,
+    ATTR_LAST_SEEN,
     ATTR_MAC,
     CMD_ARP,
     CMD_DEVICES,
@@ -208,13 +208,13 @@ class AsusWrtSSHClient:
                     "is_connected": is_connected,
                 }
 
-                # Only update last_activity for devices that are actually connected (in ARP table)
+                # Only update last_seen for devices that are actually connected (in ARP table)
                 if is_connected:
-                    device[ATTR_LAST_ACTIVITY] = datetime.now()
+                    device[ATTR_LAST_SEEN] = datetime.now()
                 else:
-                    # For devices not in ARP table, we don't set last_activity
-                    # This will cause them to be marked as away
-                    device[ATTR_LAST_ACTIVITY] = None
+                    # For devices not in ARP table, we don't set last_seen here
+                    # The coordinator will backfill the last_seen using its mac_last_seen map
+                    device[ATTR_LAST_SEEN] = None
 
                 devices.append(device)
 

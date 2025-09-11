@@ -10,7 +10,7 @@
           "password": "Password",
           "ssh_key": "SSH private key file path (optional, leave empty for password auth)",
           "port": "SSH port",
-          "consider_home": "Consider home (seconds)"
+          "seconds_until_away": "Seconds until marking away"
         }
       }
     },
@@ -28,7 +28,7 @@
       "init": {
         "title": "AsusWrt-Merlin Options",
         "data": {
-          "consider_home": "Consider home (seconds)"
+          "seconds_until_away": "Seconds until marking away"
         }
       }
     }

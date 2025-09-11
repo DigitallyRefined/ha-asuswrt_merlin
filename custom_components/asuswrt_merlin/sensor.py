@@ -125,12 +125,12 @@ class AsusWrtMerlinRouterSensor(AsusWrtMerlinSensorBase):
                 connected_count += 1
             else:
                 # Check if device was seen recently
-                last_activity = device.get("last_activity")
-                if last_activity is not None:
-                    if isinstance(last_activity, str):
-                        last_activity = datetime.fromisoformat(last_activity)
-                    time_diff = datetime.now() - last_activity
-                    if time_diff.total_seconds() < self.coordinator.consider_home:
+                last_seen = device.get("last_seen")
+                if last_seen is not None:
+                    if isinstance(last_seen, str):
+                        last_seen = datetime.fromisoformat(last_seen)
+                    time_diff = datetime.now() - last_seen
+                    if time_diff.total_seconds() < self.coordinator.seconds_until_away:
                         connected_count += 1
 
         return connected_count
@@ -170,7 +170,7 @@ class AsusWrtMerlinRouterSensor(AsusWrtMerlinSensorBase):
 
         # Count devices by status
         active_count = 0  # Currently in ARP table (actively communicating)
-        recently_seen_count = 0  # Not in ARP but seen within consider_home time
+        recently_seen_count = 0  # Not in ARP but seen within seconds_until_away time
         offline_count = 0
 
         for device in self.coordinator.data:
@@ -182,12 +182,12 @@ class AsusWrtMerlinRouterSensor(AsusWrtMerlinSensorBase):
                 recently_seen_count += 1
             else:
                 # Check if device was seen recently but not currently active
-                last_activity = device.get("last_activity")
-                if last_activity is not None:
-                    if isinstance(last_activity, str):
-                        last_activity = datetime.fromisoformat(last_activity)
-                    time_diff = datetime.now() - last_activity
-                    if time_diff.total_seconds() < self.coordinator.consider_home:
+                last_seen = device.get("last_seen")
+                if last_seen is not None:
+                    if isinstance(last_seen, str):
+                        last_seen = datetime.fromisoformat(last_seen)
+                    time_diff = datetime.now() - last_seen
+                    if time_diff.total_seconds() < self.coordinator.seconds_until_away:
                         recently_seen_count += 1
                     else:
                         offline_count += 1

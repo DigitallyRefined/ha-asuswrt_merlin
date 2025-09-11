@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     ATTR_HOSTNAME,
     ATTR_IP,
-    ATTR_LAST_ACTIVITY,
+    ATTR_LAST_SEEN,
     ATTR_MAC,
     DOMAIN,
 )
@@ -113,16 +113,16 @@ class AsusWrtMerlinDeviceTracker(ScannerEntity):
                 if device.get("is_connected", False):
                     return True
 
-                # Check if device was seen recently (only if last_activity exists)
-                last_activity = device.get(ATTR_LAST_ACTIVITY)
-                if last_activity is not None:
-                    if isinstance(last_activity, str):
-                        last_activity = datetime.fromisoformat(last_activity)
-                    time_diff = datetime.now() - last_activity
-                    if time_diff.total_seconds() < self.coordinator.consider_home:
+                # Check if device was seen recently (only if last_seen exists)
+                last_seen = device.get(ATTR_LAST_SEEN)
+                if last_seen is not None:
+                    if isinstance(last_seen, str):
+                        last_seen = datetime.fromisoformat(last_seen)
+                    time_diff = datetime.now() - last_seen
+                    if time_diff.total_seconds() < self.coordinator.seconds_until_away:
                         return True
 
-                # If last_activity is None, device is not connected
+                # If last_seen is None, device is not connected
                 return False
 
         return False
@@ -170,6 +170,18 @@ class AsusWrtMerlinDeviceTracker(ScannerEntity):
 
         if self.ip_address:
             attrs[ATTR_IP] = self.ip_address
+
+        # Expose last_seen as ISO 8601 string when known
+        if self.coordinator.data:
+            for device in self.coordinator.data:
+                if device[ATTR_MAC] == self._device[ATTR_MAC]:
+                    last_seen = device.get(ATTR_LAST_SEEN)
+                    if isinstance(last_seen, datetime):
+                        attrs[ATTR_LAST_SEEN] = last_seen.isoformat()
+                    elif isinstance(last_seen, str):
+                        # Assume already in ISO format
+                        attrs[ATTR_LAST_SEEN] = last_seen
+                    break
 
         return attrs
 

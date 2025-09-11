@@ -9,11 +9,12 @@ CONF_PASSWORD = "password"
 CONF_SSH_KEY = "ssh_key"
 CONF_PORT = "port"
 CONF_MODE = "mode"
-CONF_CONSIDER_HOME = "consider_home"
+# Configuration option: seconds a device can be inactive before marked away
+CONF_SECONDS_UNTIL_AWAY = "seconds_until_away"
 
 # Default values
 DEFAULT_PORT = 22
-DEFAULT_CONSIDER_HOME = 180
+DEFAULT_SECONDS_UNTIL_AWAY = 180
 DEFAULT_MODE = "ssh"
 
 # SSH commands
@@ -26,4 +27,4 @@ CMD_PROC_NET_DEV = "cat /proc/net/dev"
 ATTR_HOSTNAME = "hostname"
 ATTR_MAC = "mac"
 ATTR_IP = "ip"
-ATTR_LAST_ACTIVITY = "last_activity"
+ATTR_LAST_SEEN = "last_seen"

@@ -15,9 +15,9 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
-    CONF_CONSIDER_HOME,
+    CONF_SECONDS_UNTIL_AWAY,
     CONF_SSH_KEY,
-    DEFAULT_CONSIDER_HOME,
+    DEFAULT_SECONDS_UNTIL_AWAY,
     DEFAULT_PORT,
     DOMAIN,
 )
@@ -60,7 +60,8 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional(CONF_PASSWORD): str,
         vol.Optional(CONF_SSH_KEY): str,
         vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-        vol.Optional(CONF_CONSIDER_HOME, default=DEFAULT_CONSIDER_HOME): int,
+        # Prefer new key in the UI; legacy accepted if present in imported data
+        vol.Optional(CONF_SECONDS_UNTIL_AWAY, default=DEFAULT_SECONDS_UNTIL_AWAY): int,
     }
 )
 

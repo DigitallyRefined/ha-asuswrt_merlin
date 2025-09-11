@@ -14,7 +14,9 @@ from homeassistant.helpers.storage import Store
 
 from .const import (
     ATTR_MAC,
-    CONF_CONSIDER_HOME,
+    ATTR_LAST_SEEN,
+    CONF_SECONDS_UNTIL_AWAY,
+    DEFAULT_SECONDS_UNTIL_AWAY,
     DOMAIN,
 )
 from .ssh_client import AsusWrtSSHClient
@@ -36,7 +38,11 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
             password=entry.data.get("password"),
             ssh_key=entry.data.get("ssh_key"),
         )
-        self.consider_home = entry.data.get(CONF_CONSIDER_HOME, 180)
+        self.seconds_until_away = entry.data.get(
+            CONF_SECONDS_UNTIL_AWAY,
+            DEFAULT_SECONDS_UNTIL_AWAY,
+        )
+
         self.last_update_time: datetime | None = None
         self.known_devices: set[str] = set()
         self.new_devices_callback = None
@@ -80,22 +86,29 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
                 devices = []
 
             if devices:
-                current_device_macs = {
-                    device[ATTR_MAC]
+                mac_to_device = {
+                    device.get(ATTR_MAC): device
                     for device in devices
-                    if isinstance(device, dict) and ATTR_MAC in device
+                    if isinstance(device, dict) and device.get(ATTR_MAC)
                 }
+                current_device_macs = set(mac_to_device.keys())
                 new_devices = current_device_macs - self.known_devices
                 if new_devices:
-                    self.known_devices.update(new_devices)
-                    if self.new_devices_callback:
-                        new_device_data = [
-                            device
-                            for device in devices
-                            if isinstance(device, dict)
-                            and device.get(ATTR_MAC) in new_devices
-                        ]
-                        await self.new_devices_callback(new_device_data)
+                    # Only store newly discovered devices if they are currently connected
+                    connected_new_devices = {
+                        mac
+                        for mac in new_devices
+                        if mac_to_device.get(mac, {}).get("is_connected", False)
+                    }
+                    if connected_new_devices:
+                        self.known_devices.update(connected_new_devices)
+                        if self.new_devices_callback:
+                            new_device_data = [
+                                mac_to_device[mac]
+                                for mac in connected_new_devices
+                                if isinstance(mac_to_device.get(mac), dict)
+                            ]
+                            await self.new_devices_callback(new_device_data)
 
                 # Update last seen timestamps for pruning
                 now = datetime.now()
@@ -110,19 +123,17 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
                         if device.get("is_connected", False):
                             self.mac_last_seen[mac] = now
                             continue
-                        # Else, use last_activity if available
-                        last_activity = device.get("last_activity")
-                        if last_activity is not None:
-                            if isinstance(last_activity, str):
+                        # Else, use last_seen if available
+                        last_seen = device.get(ATTR_LAST_SEEN)
+                        if last_seen is not None:
+                            if isinstance(last_seen, str):
                                 try:
-                                    last_activity = datetime.fromisoformat(
-                                        last_activity
-                                    )
+                                    last_seen = datetime.fromisoformat(last_seen)
                                 except Exception:
                                     # Skip unparsable timestamps
                                     continue
-                            if isinstance(last_activity, datetime):
-                                self.mac_last_seen[mac] = last_activity
+                            if isinstance(last_seen, datetime):
+                                self.mac_last_seen[mac] = last_seen
                     except Exception:
                         # Never let a single bad device break the cycle
                         continue
@@ -135,6 +146,30 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
             await self._async_prune_stale_entities()
             # Persist last seen map
             await self._async_save_persisted_last_seen()
+            # Ensure disconnected devices carry a last_seen equal to their last seen time
+            # so that trackers can apply the grace period (seconds_until_away)
+            try:
+                if devices:
+                    for device in devices:
+                        try:
+                            if not isinstance(device, dict):
+                                continue
+                            mac = device.get(ATTR_MAC)
+                            if not mac:
+                                continue
+                            if device.get("is_connected", False):
+                                # Connected devices already updated above
+                                continue
+                            has_last = device.get(ATTR_LAST_SEEN) is not None
+                            if not has_last:
+                                last_seen = self.mac_last_seen.get(mac)
+                                if last_seen is not None:
+                                    device[ATTR_LAST_SEEN] = last_seen
+                        except Exception:
+                            continue
+            except Exception:
+                # Non-fatal enrichment failure should not break updates
+                pass
             return devices
         except Exception as ex:
             _LOGGER.error("Error in _async_update_data: %s", ex, exc_info=True)
