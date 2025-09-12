@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.components.device_tracker import ScannerEntity
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -63,7 +64,9 @@ async def async_setup_entry(
         }
         entities.append(AsusWrtMerlinDeviceTracker(coordinator, synth_device))
 
-    async_add_entities(entities, True)
+    # Do not force an immediate refresh on add; rely on restored state/coordinator
+    # to avoid temporary 'unavailable' or state flapping during reloads.
+    async_add_entities(entities, False)
 
     # Set up callback for new devices
     async def handle_new_devices(new_devices: list[dict[str, Any]]) -> None:
@@ -74,7 +77,8 @@ async def async_setup_entry(
 
         if new_entities:
             _LOGGER.info("Adding %d new device entities", len(new_entities))
-            async_add_entities(new_entities, True)
+            # Avoid update_before_add to prevent brief state flips for existing entities
+            async_add_entities(new_entities, False)
 
     coordinator.set_new_devices_callback(handle_new_devices)
 
@@ -85,7 +89,7 @@ class AsusWrtMerlinDataUpdateCoordinator(AsusWrtMerlinDataUpdateCoordinator):
     pass
 
 
-class AsusWrtMerlinDeviceTracker(ScannerEntity):
+class AsusWrtMerlinDeviceTracker(ScannerEntity, RestoreEntity):
     """Representation of a tracked device."""
 
     def __init__(
@@ -156,6 +160,15 @@ class AsusWrtMerlinDeviceTracker(ScannerEntity):
         return "not_home"
 
     @property
+    def available(self) -> bool:
+        """Keep entity available across brief coordinator failures.
+
+        We do not want transient SSH errors or empty payloads to flip the
+        device tracker to 'unavailable' momentarily.
+        """
+        return True
+
+    @property
     def source_type(self) -> str:
         """Return the source type of the device."""
         return "router"
@@ -224,6 +237,13 @@ class AsusWrtMerlinDeviceTracker(ScannerEntity):
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
+        # Restore last known state to avoid brief unknown/unavailable on startup
+        try:
+            last_state = await self.async_get_last_state()
+            if last_state and last_state.state in ("home", "not_home"):
+                self._attr_state = last_state.state  # type: ignore[attr-defined]
+        except Exception:
+            pass
         _LOGGER.debug(
             "Device tracker entity %s added to hass with enabled_default=%s",
             self.name,
