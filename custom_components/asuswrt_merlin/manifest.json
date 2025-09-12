@@ -1,11 +1,15 @@
 {
   "domain": "asuswrt_merlin",
   "name": "AsusWrt-Merlin",
-  "codeowners": ["@DigitallyRefined"],
+  "codeowners": [
+    "@DigitallyRefined"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/DigitallyRefined/ha-asuswrt_merlin",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/DigitallyRefined/ha-asuswrt_merlin/issues",
-  "requirements": ["paramiko>=2.7.0"],
-  "version": "0.0.3"
+  "requirements": [
+    "paramiko>=2.7.0"
+  ],
+  "version": "0.0.4"
 }

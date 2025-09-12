@@ -15,6 +15,8 @@ from homeassistant.helpers.storage import Store
 from .const import (
     ATTR_MAC,
     ATTR_LAST_SEEN,
+    ATTR_IP,
+    ATTR_HOSTNAME,
     CONF_SECONDS_UNTIL_AWAY,
     DEFAULT_SECONDS_UNTIL_AWAY,
     DOMAIN,
@@ -47,6 +49,7 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
         self.known_devices: set[str] = set()
         self.new_devices_callback = None
         self.mac_last_seen: dict[str, datetime] = {}
+        self.mac_hostname: dict[str, str] = {}
         self._prune_threshold: timedelta = timedelta(days=30)
         self._store: Store = Store(
             hass,
@@ -64,6 +67,9 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
         self.wan_upload_mbps: float | None = None
         self.wan_last_rx_delta_bytes: int | None = None
         self.wan_last_tx_delta_bytes: int | None = None
+
+        # Throttle client refreshes to avoid running update_clients too often
+        self._last_clients_ping: datetime | None = None
 
         super().__init__(
             hass,
@@ -119,6 +125,10 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
                         mac = device.get(ATTR_MAC)
                         if not mac:
                             continue
+                        # Track hostname when available
+                        host = device.get(ATTR_HOSTNAME)
+                        if isinstance(host, str) and host.strip():
+                            self.mac_hostname[mac] = host
                         # If currently connected, consider seen now
                         if device.get("is_connected", False):
                             self.mac_last_seen[mac] = now
@@ -183,6 +193,39 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
             self.ssh_client.connect()
             devices = self.ssh_client.get_connected_devices()
             wan_stats = self.ssh_client.get_wan_counters()
+
+            # Determine if we should run pings on this cycle
+            should_ping = False
+            try:
+                now = datetime.now()
+                if self._last_clients_ping is None or (
+                    now - self._last_clients_ping
+                ) >= timedelta(minutes=5):
+                    should_ping = True
+            except Exception:
+                should_ping = False
+
+            # If due, ping only devices currently marked as connected
+            if should_ping and isinstance(devices, list) and devices:
+                try:
+                    ips = [
+                        d.get(ATTR_IP)
+                        for d in devices
+                        if isinstance(d, dict)
+                        and d.get("is_connected", False)
+                        and d.get(ATTR_IP)
+                    ]
+                    if ips:
+                        _LOGGER.debug(
+                            "Pinging %d connected device IPs: %s",
+                            len(ips),
+                            ", ".join(ips),
+                        )
+                        self.ssh_client.ping_ips(ips)
+                        self._last_clients_ping = datetime.now()
+                except Exception:
+                    pass
+
             return devices, wan_stats
         except Exception as ex:
             _LOGGER.error("SSH fetch failed: %s", ex, exc_info=True)
@@ -195,32 +238,38 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
         self.new_devices_callback = callback
 
     async def async_load_persisted_last_seen(self) -> None:
-        """Load persisted last-seen timestamps from storage into memory."""
+        """Load persisted last-seen timestamps and hostnames from storage."""
         try:
             data = await self._store.async_load()
             if not data or not isinstance(data, dict):
                 return
-            loaded: dict[str, datetime] = {}
-            for mac, iso_ts in data.items():
-                try:
-                    if isinstance(iso_ts, str):
-                        dt = datetime.fromisoformat(iso_ts)
-                        loaded[mac] = dt
-                except Exception:
+            for mac, stored in data.items():
+                if not isinstance(stored, dict):
                     continue
-            if loaded:
-                self.mac_last_seen.update(loaded)
+                ts = stored.get("last_seen")
+                host = stored.get("hostname")
+                if isinstance(ts, str):
+                    try:
+                        self.mac_last_seen[mac] = datetime.fromisoformat(ts)
+                    except Exception:
+                        pass
+                if isinstance(host, str) and host.strip():
+                    self.mac_hostname[mac] = host
         except Exception as ex:
             _LOGGER.debug("Failed to load persisted last_seen: %s", ex)
 
     async def _async_save_persisted_last_seen(self) -> None:
-        """Persist last-seen timestamps to storage."""
+        """Persist last-seen timestamps to storage, along with hostnames."""
         try:
-            serializable = {
-                mac: ts.isoformat()
-                for mac, ts in self.mac_last_seen.items()
-                if isinstance(ts, datetime)
-            }
+            serializable: dict[str, dict[str, str]] = {}
+            for mac, ts in self.mac_last_seen.items():
+                if not isinstance(ts, datetime):
+                    continue
+                entry: dict[str, str] = {"last_seen": ts.isoformat()}
+                host = self.mac_hostname.get(mac)
+                if isinstance(host, str) and host.strip():
+                    entry["hostname"] = host
+                serializable[mac] = entry
             await self._store.async_save(serializable)
         except Exception as ex:
             _LOGGER.debug("Failed to save persisted last_seen: %s", ex)
@@ -252,6 +301,7 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
                         )
                         registry.async_remove(entity_entry.entity_id)
                         self.known_devices.discard(mac)
+                        self.mac_hostname.pop(mac, None)
                 except Exception:
                     # Continue pruning other entities even if one fails
                     continue

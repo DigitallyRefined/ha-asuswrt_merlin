@@ -135,6 +135,30 @@ class AsusWrtSSHClient:
         except Exception as ex:
             raise RuntimeError(f"Failed to execute command: {command}") from ex
 
+    def ping_ips(self, ips: list[str]) -> None:
+        """Best-effort: ping a list of IPs in parallel on the router to refresh ARP.
+
+        Uses: ping -c1 -w1 -s32 for each IP, runs them in background and waits.
+        Any errors are ignored.
+        """
+        try:
+            if not ips:
+                return
+            # Build a small shell to ping all IPs in parallel with 1s deadline
+            # IPs are expected to be plain numeric strings (safe to inject)
+            joined = " ".join(ip for ip in ips if ip)
+            if not joined:
+                return
+            cmd = (
+                "sh -c 'for ip in "
+                + joined
+                + '; do ping -c1 -w1 -s32 "$ip" >/dev/null 2>&1 & done; wait\''
+            )
+            self._execute_command(cmd)
+        except Exception:
+            # Non-fatal; continue regardless of ping outcome
+            pass
+
     def get_wan_interface(self) -> str:
         """Get WAN interface name from nvram, with simple cache."""
         if self._wan_iface_cache:

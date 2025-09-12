@@ -30,17 +30,38 @@ async def async_setup_entry(
     # Get coordinator from hass data (created in __init__.py)
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # Initialize known devices with current data
-    if coordinator.data:
-        coordinator.known_devices = {device[ATTR_MAC] for device in coordinator.data}
+    # Initialize known devices with current data and persisted last_seen cache
+    data_devices = coordinator.data or []
+    data_macs = {device[ATTR_MAC] for device in data_devices} if data_devices else set()
+    cached_macs = (
+        set(coordinator.mac_last_seen.keys())
+        if getattr(coordinator, "mac_last_seen", None)
+        else set()
+    )
+    coordinator.known_devices = set(data_macs)
 
-        # Create initial entities
-        entities = []
-        for device in coordinator.data:
-            entities.append(AsusWrtMerlinDeviceTracker(coordinator, device))
-    else:
-        # No data available yet, create empty entities list
-        entities = []
+    entities = []
+    # Create entities for devices present in the current data
+    for device in data_devices:
+        entities.append(AsusWrtMerlinDeviceTracker(coordinator, device))
+
+    # Also create entities for devices only known via persisted last_seen cache
+    offline_only_macs = cached_macs - data_macs
+    for mac in offline_only_macs:
+        last_seen = coordinator.mac_last_seen.get(mac)
+        hostname = None
+        try:
+            hostname = coordinator.mac_hostname.get(mac)
+        except Exception:
+            hostname = None
+        # Synthesize a minimal device record so the tracker can render as offline
+        synth_device = {
+            ATTR_MAC: mac,
+            ATTR_HOSTNAME: hostname or mac,  # fallback label
+            ATTR_LAST_SEEN: last_seen,
+            "is_connected": False,
+        }
+        entities.append(AsusWrtMerlinDeviceTracker(coordinator, synth_device))
 
     async_add_entities(entities, True)
 
