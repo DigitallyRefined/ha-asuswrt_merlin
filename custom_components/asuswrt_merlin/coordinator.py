@@ -78,6 +78,22 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=30),
         )
 
+    def _iter_our_device_tracker_entries(self, registry):
+        """Yield entity registry entries for this config entry's device_trackers on our platform."""
+        try:
+            entries = er.async_entries_for_config_entry(registry, self.entry.entry_id)
+        except Exception:
+            entries = []
+        for entity_entry in entries:
+            try:
+                if entity_entry.domain != "device_tracker":
+                    continue
+                if entity_entry.platform != DOMAIN:
+                    continue
+                yield entity_entry
+            except Exception:
+                continue
+
     async def _async_update_data(self) -> list[dict[str, Any]]:
         """Update devices and WAN stats via SSH (single session)."""
         try:
@@ -208,12 +224,29 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
             # If due, ping only devices currently marked as connected
             if should_ping and isinstance(devices, list) and devices:
                 try:
+                    # Build set of enabled device_tracker MACs for this entry
+                    enabled_macs: set[str] = set()
+                    try:
+                        registry = er.async_get(self.hass)
+                        for entity_entry in self._iter_our_device_tracker_entries(
+                            registry
+                        ):
+                            # Only include entities that are not disabled in the registry
+                            if (
+                                getattr(entity_entry, "disabled_by", None) is None
+                                and entity_entry.unique_id
+                            ):
+                                enabled_macs.add(entity_entry.unique_id)
+                    except Exception:
+                        enabled_macs = set()
+
                     ips = [
                         d.get(ATTR_IP)
                         for d in devices
                         if isinstance(d, dict)
                         and d.get("is_connected", False)
                         and d.get(ATTR_IP)
+                        and d.get(ATTR_MAC) in enabled_macs
                     ]
                     if ips:
                         _LOGGER.debug(
@@ -280,14 +313,8 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
             registry = er.async_get(self.hass)
             cutoff = datetime.now() - self._prune_threshold
             # Iterate over all entities and filter to our platform/domain/entry
-            for entity_entry in list(registry.entities.values()):
+            for entity_entry in self._iter_our_device_tracker_entries(registry):
                 try:
-                    if entity_entry.domain != "device_tracker":
-                        continue
-                    if entity_entry.platform != DOMAIN:
-                        continue
-                    if entity_entry.config_entry_id != self.entry.entry_id:
-                        continue
                     mac = entity_entry.unique_id
                     if not mac:
                         continue
