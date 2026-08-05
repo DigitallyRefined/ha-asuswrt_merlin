@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any
 
 import paramiko
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_HOSTNAME,
@@ -15,8 +15,8 @@ from .const import (
     ATTR_MAC,
     CMD_ARP,
     CMD_DEVICES,
-    CMD_WAN_IFNAME,
     CMD_PROC_NET_DEV,
+    CMD_WAN_IFNAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ class AsusWrtSSHClient:
             raise ConnectionError("Not connected to router")
 
         try:
-            stdin, stdout, stderr = self.client.exec_command(command)
+            _, stdout, stderr = self.client.exec_command(command)
             output = stdout.read().decode("utf-8")
             error = stderr.read().decode("utf-8")
 
@@ -155,9 +155,9 @@ class AsusWrtSSHClient:
                 + '; do ping -c1 -w1 -s32 "$ip" >/dev/null 2>&1 & done; wait\''
             )
             self._execute_command(cmd)
-        except Exception:
+        except Exception as ex:
             # Non-fatal; continue regardless of ping outcome
-            pass
+            _LOGGER.debug("Ping refresh failed: %s", ex, exc_info=True)
 
     def get_wan_interface(self) -> str:
         """Get WAN interface name from nvram, with simple cache."""
@@ -234,7 +234,7 @@ class AsusWrtSSHClient:
 
                 # Only update last_seen for devices that are actually connected (in ARP table)
                 if is_connected:
-                    device[ATTR_LAST_SEEN] = datetime.now()
+                    device[ATTR_LAST_SEEN] = dt_util.now()
                 else:
                     # For devices not in ARP table, we don't set last_seen here
                     # The coordinator will backfill the last_seen using its mac_last_seen map
@@ -249,8 +249,8 @@ class AsusWrtSSHClient:
             _LOGGER.debug("Found %d connected devices (in ARP table)", connected_count)
             return devices
 
-        except Exception as ex:
-            _LOGGER.error("Failed to get connected devices: %s", ex)
+        except Exception:
+            _LOGGER.exception("Failed to get connected devices")
             return []
 
     def _parse_dhcp_leases(self, output: str) -> list[dict[str, str]]:

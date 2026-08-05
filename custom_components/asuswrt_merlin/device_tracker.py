@@ -7,10 +7,11 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.components.device_tracker import ScannerEntity
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_HOSTNAME,
@@ -50,11 +51,7 @@ async def async_setup_entry(
     offline_only_macs = cached_macs - data_macs
     for mac in offline_only_macs:
         last_seen = coordinator.mac_last_seen.get(mac)
-        hostname = None
-        try:
-            hostname = coordinator.mac_hostname.get(mac)
-        except Exception:
-            hostname = None
+        hostname = coordinator.mac_hostname.get(mac)
         # Synthesize a minimal device record so the tracker can render as offline
         synth_device = {
             ATTR_MAC: mac,
@@ -85,8 +82,6 @@ async def async_setup_entry(
 
 class AsusWrtMerlinDataUpdateCoordinator(AsusWrtMerlinDataUpdateCoordinator):
     """Backwards-compatible alias imported by device_tracker and sensor modules."""
-
-    pass
 
 
 class AsusWrtMerlinDeviceTracker(ScannerEntity, RestoreEntity):
@@ -142,8 +137,10 @@ class AsusWrtMerlinDeviceTracker(ScannerEntity, RestoreEntity):
                 last_seen = device.get(ATTR_LAST_SEEN)
                 if last_seen is not None:
                     if isinstance(last_seen, str):
-                        last_seen = datetime.fromisoformat(last_seen)
-                    time_diff = datetime.now() - last_seen
+                        last_seen = dt_util.parse_datetime(last_seen)
+                    if last_seen is None:
+                        return False
+                    time_diff = dt_util.now() - last_seen
                     if (
                         time_diff.total_seconds()
                         < self.coordinator.seconds_until_device_away
@@ -254,8 +251,8 @@ class AsusWrtMerlinDeviceTracker(ScannerEntity, RestoreEntity):
             last_state = await self.async_get_last_state()
             if last_state and last_state.state in ("home", "not_home"):
                 self._attr_state = last_state.state  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        except Exception as ex:
+            _LOGGER.debug("Failed to restore last state: %s", ex, exc_info=True)
         _LOGGER.debug(
             "Device tracker entity %s added to hass with enabled_default=%s",
             self.name,
