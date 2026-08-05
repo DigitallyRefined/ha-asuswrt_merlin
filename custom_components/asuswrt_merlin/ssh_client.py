@@ -96,7 +96,6 @@ class AsusWrtSSHClient:
                 paramiko.Ed25519Key,
                 paramiko.ECDSAKey,
                 paramiko.RSAKey,
-                paramiko.DSSKey,
             ]
 
             for key_type in key_types:
