@@ -7,7 +7,6 @@ import os
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
@@ -20,8 +19,8 @@ from .const import (
     CONF_SECONDS_UNTIL_DEVICE_AWAY,
     CONF_SSH_KEY,
     DEFAULT_DAYS_UNTIL_DEVICE_REMOVAL,
-    DEFAULT_SECONDS_UNTIL_DEVICE_AWAY,
     DEFAULT_PORT,
+    DEFAULT_SECONDS_UNTIL_DEVICE_AWAY,
     DOMAIN,
 )
 from .ssh_client import AsusWrtSSHClient
@@ -45,13 +44,10 @@ async def validate_ssh_key_file(hass: HomeAssistant, value: str) -> str:
         try:
             with open(value, "r") as f:
                 f.read(1)  # Try to read at least one character
-        except (OSError, IOError) as ex:
+        except OSError as ex:
             raise vol.Invalid(f"Cannot read SSH key file: {ex}") from ex
 
-    try:
-        await hass.async_add_executor_job(_check_file_readable)
-    except vol.Invalid:
-        raise
+    await hass.async_add_executor_job(_check_file_readable)
 
     return value
 

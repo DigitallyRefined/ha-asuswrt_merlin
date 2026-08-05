@@ -7,15 +7,16 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
-    SensorDeviceClass,
 )
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import AsusWrtMerlinDataUpdateCoordinator
@@ -47,7 +48,7 @@ def _ensure_wan_stats_updated(coordinator: AsusWrtMerlinDataUpdateCoordinator) -
                 "coordinator_ts": coordinator.last_update_time,
                 "last_rx_bytes": None,
                 "last_tx_bytes": None,
-                "last_sample_ts": datetime.now(),
+                "last_sample_ts": dt_util.now(),
                 "total_download_gb": coordinator.wan_total_download_gb,
                 "total_upload_gb": coordinator.wan_total_upload_gb,
                 "download_mbps": coordinator.wan_download_mbps,
@@ -55,7 +56,7 @@ def _ensure_wan_stats_updated(coordinator: AsusWrtMerlinDataUpdateCoordinator) -
             }
         )
     except Exception as ex:
-        _LOGGER.debug("WAN stats update failed: %s", ex)
+        _LOGGER.debug("WAN stats update failed: %s", ex, exc_info=True)
 
 
 async def async_setup_entry(
@@ -128,8 +129,10 @@ class AsusWrtMerlinRouterSensor(AsusWrtMerlinSensorBase):
                 last_seen = device.get("last_seen")
                 if last_seen is not None:
                     if isinstance(last_seen, str):
-                        last_seen = datetime.fromisoformat(last_seen)
-                    time_diff = datetime.now() - last_seen
+                        last_seen = dt_util.parse_datetime(last_seen)
+                    if last_seen is None:
+                        continue
+                    time_diff = dt_util.now() - last_seen
                     if (
                         time_diff.total_seconds()
                         < self.coordinator.seconds_until_device_away
@@ -190,15 +193,18 @@ class AsusWrtMerlinRouterSensor(AsusWrtMerlinSensorBase):
                 last_seen = device.get("last_seen")
                 if last_seen is not None:
                     if isinstance(last_seen, str):
-                        last_seen = datetime.fromisoformat(last_seen)
-                    time_diff = datetime.now() - last_seen
-                    if (
-                        time_diff.total_seconds()
-                        < self.coordinator.seconds_until_device_away
-                    ):
-                        recently_seen_count += 1
-                    else:
+                        last_seen = dt_util.parse_datetime(last_seen)
+                    if last_seen is None:
                         offline_count += 1
+                    else:
+                        time_diff = dt_util.now() - last_seen
+                        if (
+                            time_diff.total_seconds()
+                            < self.coordinator.seconds_until_device_away
+                        ):
+                            recently_seen_count += 1
+                        else:
+                            offline_count += 1
                 else:
                     offline_count += 1
 
@@ -336,7 +342,7 @@ class _AccumulatingWanCounterSensor(AsusWrtMerlinSensorBase, RestoreEntity):
         return attrs
 
     def _current_period_marker(self) -> str:
-        now = datetime.now()
+        now = dt_util.now()
         if self._period == "daily":
             return now.strftime("%Y-%m-%d")
         if self._period == "monthly":
@@ -349,7 +355,7 @@ class _AccumulatingWanCounterSensor(AsusWrtMerlinSensorBase, RestoreEntity):
         """Get the datetime when the current period started."""
         if self._period is None:
             return None
-        now = datetime.now()
+        now = dt_util.now()
         if self._period == "daily":
             # Midnight of current day
             return now.replace(hour=0, minute=0, second=0, microsecond=0)

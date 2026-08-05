@@ -8,15 +8,16 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
-    ATTR_MAC,
-    ATTR_LAST_SEEN,
-    ATTR_IP,
     ATTR_HOSTNAME,
+    ATTR_IP,
+    ATTR_LAST_SEEN,
+    ATTR_MAC,
     CONF_DAYS_UNTIL_DEVICE_REMOVAL,
     CONF_SECONDS_UNTIL_DEVICE_AWAY,
     DEFAULT_DAYS_UNTIL_DEVICE_REMOVAL,
@@ -95,17 +96,17 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
         """Yield entity registry entries for this config entry's device_trackers on our platform."""
         try:
             entries = er.async_entries_for_config_entry(registry, self.entry.entry_id)
-        except Exception:
+        except Exception as ex:
+            _LOGGER.debug(
+                "Failed to fetch entity registry entries: %s", ex, exc_info=True
+            )
             entries = []
         for entity_entry in entries:
-            try:
-                if entity_entry.domain != "device_tracker":
-                    continue
-                if entity_entry.platform != DOMAIN:
-                    continue
-                yield entity_entry
-            except Exception:
+            if entity_entry.domain != "device_tracker":
                 continue
+            if entity_entry.platform != DOMAIN:
+                continue
+            yield entity_entry
 
     async def _async_update_data(self) -> list[dict[str, Any]]:
         """Update devices and WAN stats via SSH (single session)."""
@@ -114,7 +115,7 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
             devices, wan_stats = await self.hass.async_add_executor_job(
                 self._get_data_from_router
             )
-            self.last_update_time = datetime.now()
+            self.last_update_time = dt_util.now()
 
             if not isinstance(devices, list):
                 _LOGGER.warning("Expected list of devices, got %s", type(devices))
@@ -146,36 +147,30 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
                             await self.new_devices_callback(new_device_data)
 
                 # Update last seen timestamps for pruning
-                now = datetime.now()
+                now = dt_util.now()
                 for device in devices:
-                    try:
-                        if not isinstance(device, dict):
-                            continue
-                        mac = device.get(ATTR_MAC)
-                        if not mac:
-                            continue
-                        # Track hostname when available
-                        host = device.get(ATTR_HOSTNAME)
-                        if isinstance(host, str) and host.strip():
-                            self.mac_hostname[mac] = host
-                        # If currently connected, consider seen now
-                        if device.get("is_connected", False):
-                            self.mac_last_seen[mac] = now
-                            continue
-                        # Else, use last_seen if available
-                        last_seen = device.get(ATTR_LAST_SEEN)
-                        if last_seen is not None:
-                            if isinstance(last_seen, str):
-                                try:
-                                    last_seen = datetime.fromisoformat(last_seen)
-                                except Exception:
-                                    # Skip unparsable timestamps
-                                    continue
-                            if isinstance(last_seen, datetime):
-                                self.mac_last_seen[mac] = last_seen
-                    except Exception:
-                        # Never let a single bad device break the cycle
+                    if not isinstance(device, dict):
                         continue
+                    mac = device.get(ATTR_MAC)
+                    if not mac:
+                        continue
+                    # Track hostname when available
+                    host = device.get(ATTR_HOSTNAME)
+                    if isinstance(host, str) and host.strip():
+                        self.mac_hostname[mac] = host
+                    # If currently connected, consider seen now
+                    if device.get("is_connected", False):
+                        self.mac_last_seen[mac] = now
+                        continue
+                    # Else, use last_seen if available
+                    last_seen = device.get(ATTR_LAST_SEEN)
+                    if last_seen is not None:
+                        if isinstance(last_seen, str):
+                            last_seen = dt_util.parse_datetime(last_seen)
+                            if last_seen is None:
+                                # Skip unparsable timestamps
+                                continue
+                        self.mac_last_seen[mac] = last_seen
 
             if wan_stats:
                 self._update_wan_metrics(wan_stats)
@@ -187,31 +182,24 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
             await self._async_save_persisted_last_seen()
             # Ensure disconnected devices carry a last_seen equal to their last seen time
             # so that trackers can apply the grace period (seconds_until_device_away)
-            try:
-                if devices:
-                    for device in devices:
-                        try:
-                            if not isinstance(device, dict):
-                                continue
-                            mac = device.get(ATTR_MAC)
-                            if not mac:
-                                continue
-                            if device.get("is_connected", False):
-                                # Connected devices already updated above
-                                continue
-                            has_last = device.get(ATTR_LAST_SEEN) is not None
-                            if not has_last:
-                                last_seen = self.mac_last_seen.get(mac)
-                                if last_seen is not None:
-                                    device[ATTR_LAST_SEEN] = last_seen
-                        except Exception:
-                            continue
-            except Exception:
-                # Non-fatal enrichment failure should not break updates
-                pass
+            if devices:
+                for device in devices:
+                    if not isinstance(device, dict):
+                        continue
+                    mac = device.get(ATTR_MAC)
+                    if not mac:
+                        continue
+                    if device.get("is_connected", False):
+                        # Connected devices already updated above
+                        continue
+                    has_last = device.get(ATTR_LAST_SEEN) is not None
+                    if not has_last:
+                        last_seen = self.mac_last_seen.get(mac)
+                        if last_seen is not None:
+                            device[ATTR_LAST_SEEN] = last_seen
             return devices
         except Exception as ex:
-            _LOGGER.error("Error in _async_update_data: %s", ex, exc_info=True)
+            _LOGGER.exception("Error in _async_update_data")
             raise UpdateFailed(f"Error communicating with router: {ex}") from ex
 
     def _get_data_from_router(
@@ -225,33 +213,25 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Determine if we should run pings on this cycle
             should_ping = False
-            try:
-                now = datetime.now()
-                if self._last_clients_ping is None or (
-                    now - self._last_clients_ping
-                ) >= timedelta(minutes=5):
-                    should_ping = True
-            except Exception:
-                should_ping = False
+            now = dt_util.now()
+            if self._last_clients_ping is None or (
+                now - self._last_clients_ping
+            ) >= timedelta(minutes=5):
+                should_ping = True
 
             # If due, ping only devices currently marked as connected
             if should_ping and isinstance(devices, list) and devices:
                 try:
                     # Build set of enabled device_tracker MACs for this entry
                     enabled_macs: set[str] = set()
-                    try:
-                        registry = er.async_get(self.hass)
-                        for entity_entry in self._iter_our_device_tracker_entries(
-                            registry
+                    registry = er.async_get(self.hass)
+                    for entity_entry in self._iter_our_device_tracker_entries(registry):
+                        # Only include entities that are not disabled in the registry
+                        if (
+                            getattr(entity_entry, "disabled_by", None) is None
+                            and entity_entry.unique_id
                         ):
-                            # Only include entities that are not disabled in the registry
-                            if (
-                                getattr(entity_entry, "disabled_by", None) is None
-                                and entity_entry.unique_id
-                            ):
-                                enabled_macs.add(entity_entry.unique_id)
-                    except Exception:
-                        enabled_macs = set()
+                            enabled_macs.add(entity_entry.unique_id)
 
                     ips = [
                         d.get(ATTR_IP)
@@ -268,13 +248,13 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
                             ", ".join(ips),
                         )
                         self.ssh_client.ping_ips(ips)
-                        self._last_clients_ping = datetime.now()
-                except Exception:
-                    pass
+                        self._last_clients_ping = dt_util.now()
+                except Exception as ex:
+                    _LOGGER.debug("Ping refresh failed: %s", ex, exc_info=True)
 
             return devices, wan_stats
-        except Exception as ex:
-            _LOGGER.error("SSH fetch failed: %s", ex, exc_info=True)
+        except Exception:
+            _LOGGER.exception("SSH fetch failed")
             return [], None
         finally:
             self.ssh_client.disconnect()
@@ -295,14 +275,13 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
                 ts = stored.get("last_seen")
                 host = stored.get("hostname")
                 if isinstance(ts, str):
-                    try:
-                        self.mac_last_seen[mac] = datetime.fromisoformat(ts)
-                    except Exception:
-                        pass
+                    parsed = dt_util.parse_datetime(ts)
+                    if parsed is not None:
+                        self.mac_last_seen[mac] = parsed
                 if isinstance(host, str) and host.strip():
                     self.mac_hostname[mac] = host
         except Exception as ex:
-            _LOGGER.debug("Failed to load persisted last_seen: %s", ex)
+            _LOGGER.debug("Failed to load persisted last_seen: %s", ex, exc_info=True)
 
     async def _async_save_persisted_last_seen(self) -> None:
         """Persist last-seen timestamps to storage, along with hostnames."""
@@ -318,13 +297,13 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
                 serializable[mac] = entry
             await self._store.async_save(serializable)
         except Exception as ex:
-            _LOGGER.debug("Failed to save persisted last_seen: %s", ex)
+            _LOGGER.debug("Failed to save persisted last_seen: %s", ex, exc_info=True)
 
     async def _async_prune_stale_entities(self) -> None:
         """Remove old device_tracker entities not seen for over the prune threshold."""
         try:
             registry = er.async_get(self.hass)
-            cutoff = datetime.now() - self._prune_threshold
+            cutoff = dt_util.now() - self._prune_threshold
             # Iterate over all entities and filter to our platform/domain/entry
             for entity_entry in self._iter_our_device_tracker_entries(registry):
                 try:
@@ -343,15 +322,15 @@ class AsusWrtMerlinDataUpdateCoordinator(DataUpdateCoordinator):
                         self.known_devices.discard(mac)
                         self.mac_last_seen.pop(mac, None)
                         self.mac_hostname.pop(mac, None)
-                except Exception:
-                    # Continue pruning other entities even if one fails
+                except Exception as ex:
+                    _LOGGER.debug("Failed to prune entity: %s", ex, exc_info=True)
                     continue
         except Exception as ex:
-            _LOGGER.debug("Pruning stale entities failed: %s", ex)
+            _LOGGER.debug("Pruning stale entities failed: %s", ex, exc_info=True)
 
     def _update_wan_metrics(self, counters: dict[str, int]) -> None:
         """Compute WAN totals in GB and speeds in Mbps from byte counters."""
-        now = datetime.now()
+        now = dt_util.now()
         rx_bytes = counters.get("rx_bytes")
         tx_bytes = counters.get("tx_bytes")
         if rx_bytes is None or tx_bytes is None:
